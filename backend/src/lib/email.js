@@ -129,7 +129,7 @@ export const sendPasswordResetEmail = async (email, resetUrl, userName = "User")
     </html>
     `;
 
-    // Strategy 1: Resend HTTP API (Production Default)
+    // Strategy 1A: Resend HTTP API (HTTPS Port 443 - Bypasses Render Port Blocks)
     if (process.env.RESEND_API_KEY) {
         try {
             const resend = new Resend(process.env.RESEND_API_KEY);
@@ -150,6 +150,37 @@ export const sendPasswordResetEmail = async (email, resetUrl, userName = "User")
             }
         } catch (resendError) {
             console.warn(`[Resend Exception]:`, resendError.message);
+        }
+    }
+
+    // Strategy 1B: Brevo REST API (HTTPS Port 443 - Bypasses Render Port Blocks)
+    if (process.env.BREVO_API_KEY) {
+        try {
+            const senderEmail = process.env.EMAIL_FROM_ADDRESS || (process.env.EMAIL_FROM ? process.env.EMAIL_FROM.replace(/.*<([^>]+)>.*/, "$1").trim() : "abdulyahya9973@gmail.com");
+            const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+                method: "POST",
+                headers: {
+                    "accept": "application/json",
+                    "api-key": process.env.BREVO_API_KEY,
+                    "content-type": "application/json",
+                },
+                body: JSON.stringify({
+                    sender: { name: `${brandName} Security`, email: senderEmail },
+                    to: [{ email, name: userName }],
+                    subject: emailSubject,
+                    htmlContent: emailHtml,
+                }),
+            });
+
+            const data = await response.json();
+            if (response.ok && (data?.messageId || data?.id)) {
+                console.log(`[Brevo API] Email dispatched via HTTPS REST to ${email} (MessageId: ${data.messageId || data.id})`);
+                return { success: true, messageId: data.messageId || data.id, provider: "brevo-api" };
+            } else {
+                console.warn("[Brevo API Error]:", data);
+            }
+        } catch (brevoApiError) {
+            console.warn("[Brevo API Exception]:", brevoApiError.message);
         }
     }
 
