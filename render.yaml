@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: chat-app
+    env: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        value: duxodilz0
+      - key: CLOUDINARY_API_KEY
+        value: 136242728563662
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        value: bbcd2e001@smtp-brevo.com
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        value: "ChatApp Security" <abdulyahya9973@gmail.com>

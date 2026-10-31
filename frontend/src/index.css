@@ -1,3 +1,40 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  * {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Modern sleek custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.4);
+}
+
+/* Ambient glow and subtle glassmorphism utilities */
+.glass-panel {
+  background: rgba(var(--b1), 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.ambient-gradient {
+  background: radial-gradient(circle at 50% 0%, rgba(var(--p), 0.15), transparent 70%);
+}
+
