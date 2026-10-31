@@ -15,9 +15,9 @@ services:
       - key: CLIENT_URL
         sync: false
       - key: CLOUDINARY_CLOUD_NAME
-        value: duxodilz0
+        sync: false
       - key: CLOUDINARY_API_KEY
-        value: 136242728563662
+        sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: SMTP_HOST
@@ -25,8 +25,8 @@ services:
       - key: SMTP_PORT
         value: 587
       - key: SMTP_USER
-        value: bbcd2e001@smtp-brevo.com
+        sync: false
       - key: SMTP_PASS
         sync: false
       - key: EMAIL_FROM
-        value: "ChatApp Security" <abdulyahya9973@gmail.com>
+        sync: false
