@@ -19,9 +19,7 @@ export const connectDB = async () => {
                 return;
             } catch (error) {
                 console.warn("MongoDB Atlas connection failed:", error.message);
-                if (process.env.NODE_ENV === "production") {
-                    throw error;
-                }
+                console.log("Falling back to embedded database engine...");
             }
         }
     }
