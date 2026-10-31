@@ -158,35 +158,43 @@ export const sendPasswordResetEmail = async (email, resetUrl, userName = "User")
     const emailPass = process.env.EMAIL_PASS || process.env.SMTP_PASS;
 
     if (emailUser && emailPass) {
-        try {
-            let transporter;
+        const primaryPort = Number(process.env.SMTP_PORT) || 587;
+        const fallbackPort = primaryPort === 587 ? 465 : 587;
 
+        const createTransporter = (port) => {
             if (process.env.SMTP_HOST) {
-                transporter = nodemailer.createTransport({
+                return nodemailer.createTransport({
                     host: process.env.SMTP_HOST,
-                    port: Number(process.env.SMTP_PORT) || 587,
-                    secure: Number(process.env.SMTP_PORT) === 465,
-                    pool: true,
-                    maxConnections: 5,
+                    port: port,
+                    secure: port === 465,
+                    connectionTimeout: 10000,
+                    greetingTimeout: 10000,
+                    socketTimeout: 15000,
                     auth: {
                         user: emailUser,
                         pass: emailPass,
                     },
                     tls: {
-                        rejectUnauthorized: process.env.NODE_ENV === "production",
+                        rejectUnauthorized: false, // Prevents cloud container CA validation drops
                     },
                 });
             } else {
-                transporter = nodemailer.createTransport({
+                return nodemailer.createTransport({
                     service: process.env.EMAIL_SERVICE || "gmail",
+                    connectionTimeout: 10000,
                     auth: {
                         user: emailUser,
                         pass: emailPass,
                     },
                 });
             }
+        };
 
-            const senderFrom = process.env.EMAIL_FROM || process.env.SMTP_FROM || emailUser || `"${brandName} Security" <${emailUser}>`;
+        const senderFrom = process.env.EMAIL_FROM || process.env.SMTP_FROM || `"ChatApp Security" <${emailUser}>`;
+
+        // Attempt 1: Primary Port
+        try {
+            const transporter = createTransporter(primaryPort);
             const info = await transporter.sendMail({
                 from: senderFrom,
                 to: email,
@@ -194,11 +202,32 @@ export const sendPasswordResetEmail = async (email, resetUrl, userName = "User")
                 html: emailHtml,
             });
 
-            console.log(`[SMTP] Email sent successfully to ${email} (MessageId: ${info.messageId})`);
+            console.log(`[SMTP] Email dispatched successfully to ${email} on port ${primaryPort} (MessageId: ${info.messageId})`);
             return { success: true, messageId: info.messageId, provider: "smtp" };
         } catch (smtpError) {
-            console.error(`[SMTP Error]:`, smtpError.message);
+            console.warn(`[SMTP Warning] Port ${primaryPort} attempt failed: ${smtpError.message}`);
+
+            // Attempt 2: Fallback Port if SMTP_HOST is defined
+            if (process.env.SMTP_HOST) {
+                try {
+                    console.log(`[SMTP Failover] Retrying dispatch on secondary port ${fallbackPort}...`);
+                    const fallbackTransporter = createTransporter(fallbackPort);
+                    const info = await fallbackTransporter.sendMail({
+                        from: senderFrom,
+                        to: email,
+                        subject: emailSubject,
+                        html: emailHtml,
+                    });
+
+                    console.log(`[SMTP Failover] Email dispatched successfully to ${email} on port ${fallbackPort} (MessageId: ${info.messageId})`);
+                    return { success: true, messageId: info.messageId, provider: "smtp" };
+                } catch (failoverError) {
+                    console.error(`[SMTP Error] Secondary port ${fallbackPort} also failed:`, failoverError.message);
+                }
+            }
         }
+    } else {
+        console.warn("[Email Config Warning] No SMTP_USER / SMTP_PASS or RESEND_API_KEY found in environment variables. Live emails cannot be dispatched to real inboxes without credentials.");
     }
 
     // Strategy 3: Development & Testing Ethereal Fallback

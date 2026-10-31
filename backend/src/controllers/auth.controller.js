@@ -202,6 +202,8 @@ export const forgotPassword = async (req, res) => {
         const normalizedEmail = email.toLowerCase().trim();
         const user = await User.findOne({ email: normalizedEmail });
 
+        console.log(`[ForgotPassword] Request for: "${normalizedEmail}" | User in DB: ${!!user}`);
+
         // Generate raw random reset token
         const rawToken = crypto.randomBytes(32).toString("hex");
 
@@ -213,25 +215,28 @@ export const forgotPassword = async (req, res) => {
             user.resetPasswordExpires = Date.now() + 15 * 60 * 1000; // 15 mins
             await user.save();
 
-            // Construct secure reset URL against whitelist to prevent Host Header / Origin poisoning
-            const trustedOrigins = [
-                "http://localhost:5173",
-                "http://127.0.0.1:5173",
-                "http://localhost:5174",
-                "http://127.0.0.1:5174",
-            ];
-            if (process.env.CLIENT_URL) {
-                trustedOrigins.push(process.env.CLIENT_URL);
+            // Resolve client base URL dynamically
+            const hostHeader = req.get("host");
+            const proto = req.headers["x-forwarded-proto"] || (req.secure ? "https" : "http");
+            const requestOrigin = hostHeader ? `${proto}://${hostHeader}` : null;
+            const originHeader = req.headers.origin;
+
+            const isRenderOrigin = originHeader && originHeader.includes(".onrender.com");
+            const isLocalOrigin = originHeader && (originHeader.includes("localhost") || originHeader.includes("127.0.0.1"));
+
+            let clientBaseUrl = process.env.CLIENT_URL;
+            if (originHeader && (isRenderOrigin || isLocalOrigin || originHeader === clientBaseUrl)) {
+                clientBaseUrl = originHeader;
+            } else if (!clientBaseUrl && requestOrigin) {
+                clientBaseUrl = requestOrigin;
+            } else if (!clientBaseUrl) {
+                clientBaseUrl = "http://localhost:5173";
             }
 
-            const originHeader = req.headers.origin;
-            const clientBaseUrl = (originHeader && trustedOrigins.includes(originHeader))
-                ? originHeader
-                : (process.env.CLIENT_URL || "http://localhost:5173");
-
-            const resetUrl = `${clientBaseUrl}/reset-password/${rawToken}`;
+            const resetUrl = `${clientBaseUrl.replace(/\/$/, "")}/reset-password/${rawToken}`;
 
             // Dispatch Email via Enterprise Pipeline
+            console.log(`[ForgotPassword] Dispatching email to: ${user.email} with link: ${resetUrl}`);
             await sendPasswordResetEmail(user.email, resetUrl, user.fullName);
 
             return res.status(200).json({
