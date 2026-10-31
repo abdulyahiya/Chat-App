@@ -9,7 +9,25 @@ const ICE_SERVERS = {
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
     { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" },
+    { urls: "stun:stun.cloudflare.com:3478" },
+    { urls: "stun:global.stun.twilio.com:3478" },
   ],
+};
+
+let pendingIceCandidates = [];
+
+const flushPendingIceCandidates = async (pc) => {
+  if (!pc || !pc.remoteDescription) return;
+  while (pendingIceCandidates.length > 0) {
+    const cand = pendingIceCandidates.shift();
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(cand));
+    } catch (err) {
+      console.warn("Error adding buffered ice candidate:", err);
+    }
+  }
 };
 
 export const useCallStore = create((set, get) => ({
@@ -107,6 +125,7 @@ export const useCallStore = create((set, get) => ({
       if (peerConnection && signal) {
         try {
           await peerConnection.setRemoteDescription(new RTCSessionDescription(signal));
+          await flushPendingIceCandidates(peerConnection);
           set({ callState: "connected" });
           soundFx.playPop();
         } catch (err) {
@@ -117,13 +136,17 @@ export const useCallStore = create((set, get) => ({
 
     // When remote ICE candidate arrives
     socket.on("iceCandidate", async ({ candidate }) => {
+      if (!candidate) return;
       const { peerConnection } = get();
-      if (peerConnection && candidate) {
+      if (peerConnection && peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
         try {
           await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
         } catch (err) {
           console.error("Error adding ice candidate:", err);
         }
+      } else {
+        // Buffer candidate until remote description is set
+        pendingIceCandidates.push(candidate);
       }
     });
 
@@ -144,9 +167,18 @@ export const useCallStore = create((set, get) => ({
     }
 
     try {
+      pendingIceCandidates = [];
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: type === "video",
-        audio: true,
+        video: type === "video" ? {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user",
+        } : false,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
 
       const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -157,9 +189,13 @@ export const useCallStore = create((set, get) => ({
 
       // Listen for remote tracks
       pc.ontrack = (event) => {
-        event.streams[0].getTracks().forEach((track) => {
-          remoteStream.addTrack(track);
-        });
+        if (event.streams && event.streams[0]) {
+          set({ remoteStream: event.streams[0] });
+        } else if (event.track) {
+          const current = get().remoteStream ? new MediaStream(get().remoteStream.getTracks()) : new MediaStream();
+          current.addTrack(event.track);
+          set({ remoteStream: current });
+        }
       };
 
       // Listen for ICE candidates
@@ -213,8 +249,16 @@ export const useCallStore = create((set, get) => ({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: callType === "video",
-        audio: true,
+        video: callType === "video" ? {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: "user",
+        } : false,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
 
       const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -223,9 +267,13 @@ export const useCallStore = create((set, get) => ({
       stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
       pc.ontrack = (event) => {
-        event.streams[0].getTracks().forEach((track) => {
-          remoteStream.addTrack(track);
-        });
+        if (event.streams && event.streams[0]) {
+          set({ remoteStream: event.streams[0] });
+        } else if (event.track) {
+          const current = get().remoteStream ? new MediaStream(get().remoteStream.getTracks()) : new MediaStream();
+          current.addTrack(event.track);
+          set({ remoteStream: current });
+        }
       };
 
       pc.onicecandidate = (event) => {
@@ -238,6 +286,7 @@ export const useCallStore = create((set, get) => ({
       };
 
       await pc.setRemoteDescription(new RTCSessionDescription(peerUser.signal));
+      await flushPendingIceCandidates(pc);
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
@@ -301,6 +350,7 @@ export const useCallStore = create((set, get) => ({
   },
 
   cleanupCall: () => {
+    pendingIceCandidates = [];
     const { localStream, peerConnection } = get();
 
     if (localStream) {

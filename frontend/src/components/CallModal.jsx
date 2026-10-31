@@ -32,21 +32,34 @@ const CallModal = () => {
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const [callDuration, setCallDuration] = useState(0);
 
   // Attach local stream to video element
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
     }
-  }, [localStream, callState]);
+  }, [localStream, callState, callType]);
 
-  // Attach remote stream to video element
+  // Attach remote stream to video & audio elements
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
+    if (remoteStream) {
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch((err) => {
+          console.warn("Remote video autoPlay interrupted:", err);
+        });
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch((err) => {
+          console.warn("Remote audio autoPlay interrupted:", err);
+        });
+      }
     }
-  }, [remoteStream, callState]);
+  }, [remoteStream, callState, callType]);
 
   // Call duration counter
   useEffect(() => {
@@ -258,6 +271,15 @@ const CallModal = () => {
                 </div>
               )}
             </div>
+
+            {/* Dedicated audio element for voice calls (muted in video mode to prevent doubling) */}
+            <audio
+              ref={remoteAudioRef}
+              autoPlay
+              playsInline
+              muted={callType === "video"}
+              className="hidden"
+            />
 
             {/* Bottom Control Bar */}
             <div className="p-4 z-20 flex items-center justify-center gap-4 bg-gradient-to-t from-black/80 to-transparent">
